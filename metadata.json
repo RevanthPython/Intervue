@@ -1,0 +1,8 @@
+{
+  "name": "Interview Portfolio",
+  "description": "A professional platform for candidates to record interviews, get AI-powered feedback, and share their portfolios with companies.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

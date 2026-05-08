@@ -1,0 +1,95 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile for candidates, interviewers, and companies.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["candidate", "interviewer", "company", "admin"] },
+        "bio": { "type": "string" },
+        "skills": { "type": "array", "items": { "type": "string" } },
+        "domains": { "type": "array", "items": { "type": "string" } },
+        "languages": { "type": "array", "items": { "type": "string" } },
+        "location": { "type": "string" },
+        "experience": { "type": "string" },
+        "yearsOfExperience": { "type": "number" },
+        "company": { "type": "string" },
+        "jobTitle": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Interview": {
+      "title": "Interview",
+      "description": "Recorded interview session details.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "candidateId": { "type": "string" },
+        "interviewerId": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["scheduled", "completed", "reviewed"] },
+        "startTime": { "type": "string", "format": "date-time" },
+        "endTime": { "type": "string", "format": "date-time" },
+        "interviewerJoined": { "type": "boolean" },
+        "candidateSetup": {
+          "type": "object",
+          "properties": {
+            "currentStatus": { "type": "string" },
+            "experienceSummary": { "type": "string" },
+            "targetFields": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "ratings": {
+          "type": "object",
+          "properties": {
+            "technical": { "type": "number" },
+            "communication": { "type": "number" },
+            "problemSolving": { "type": "number" },
+            "confidence": { "type": "number" },
+            "professionalism": { "type": "number" }
+          }
+        },
+        "interviewerComments": { "type": "string" },
+        "aiSummary": { "type": "string" },
+        "aiFeedbackTone": { "type": "string" },
+        "aiScore": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["candidateId", "status", "startTime", "endTime"]
+    },
+    "InterestRequest": {
+      "title": "Interest Request",
+      "description": "Request from a company to a candidate.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "companyId": { "type": "string" },
+        "candidateId": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["companyId", "candidateId", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents."
+    },
+    "/interviews/{interviewId}": {
+      "schema": "Interview",
+      "description": "Interview session documents."
+    },
+    "/interestRequests/{requestId}": {
+      "schema": "InterestRequest",
+      "description": "Company interest requests."
+    }
+  }
+}

@@ -1,0 +1,175 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: userId (Firebase Auth UID)
+// Fields:
+//   - uid: string (required)
+//   - email: string (required, email format)
+//   - displayName: string
+//   - photoURL: string
+//   - role: string (required, 'candidate' | 'interviewer' | 'company' | 'admin')
+//   - bio: string
+//   - skills: list of strings
+//   - location: string
+//   - experience: string
+//   - isVerified: boolean
+//   - createdAt: timestamp
+//
+// Collection: interviews
+// Document ID: interviewId
+// Fields:
+//   - candidateId: string (required)
+//   - interviewerId: string
+//   - videoUrl: string
+//   - status: string (required, 'scheduled' | 'completed' | 'reviewed')
+//   - startTime: timestamp (required)
+//   - endTime: timestamp (required)
+//   - interviewerJoined: boolean
+//   - candidateSetup: map
+//   - ratings: map (technical, communication, problemSolving, confidence, professionalism)
+//   - interviewerComments: string
+//   - aiSummary: string
+//   - aiFeedbackTone: string
+//   - aiScore: number
+//   - createdAt: timestamp
+//
+// Collection: interestRequests
+// Document ID: requestId
+// Fields:
+//   - companyId: string (required)
+//   - candidateId: string (required)
+//   - message: string
+//   - status: string (required, 'pending' | 'accepted' | 'declined')
+//   - createdAt: timestamp
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "revanthkumar.0709@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isInterviewer() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'interviewer';
+    }
+
+    function isCompany() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'company';
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid == request.auth.uid &&
+             isValidEmail(data.email) &&
+             data.role in ['candidate', 'interviewer', 'company', 'admin'] &&
+             (data.displayName is string || !('displayName' in data)) &&
+             (data.bio is string || !('bio' in data)) &&
+             (data.skills is list || !('skills' in data)) &&
+             (data.location is string || !('location' in data)) &&
+             (data.experience is string || !('experience' in data)) &&
+             (data.yearsOfExperience is number || !('yearsOfExperience' in data)) &&
+             (data.isVerified is bool || !('isVerified' in data));
+    }
+
+    function isValidInterview(data) {
+      return data.keys().hasAll(['candidateId', 'status', 'startTime', 'endTime']) &&
+             data.candidateId is string &&
+             data.status in ['scheduled', 'completed', 'reviewed'] &&
+             (data.interviewerId is string || !('interviewerId' in data)) &&
+             (data.videoUrl is string || !('videoUrl' in data)) &&
+             (data.aiScore is number || !('aiScore' in data)) &&
+             data.startTime is timestamp &&
+             data.endTime is timestamp;
+    }
+
+    function isWithinTimeSlot(interview) {
+      return request.time >= interview.startTime &&
+             request.time <= interview.endTime;
+    }
+
+    function isValidInterestRequest(data) {
+      return data.keys().hasAll(['companyId', 'candidateId', 'status']) &&
+             data.companyId == request.auth.uid &&
+             data.candidateId is string &&
+             data.status in ['pending', 'accepted', 'declined'] &&
+             (data.companyName is string || !('companyName' in data)) &&
+             (data.companyEmail is string || !('companyEmail' in data)) &&
+             (data.candidateName is string || !('candidateName' in data)) &&
+             (data.candidateEmail is string || !('candidateEmail' in data));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role != 'admin';
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role) || isAdmin();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    match /interviews/{interviewId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (request.resource.data.candidateId == request.auth.uid || isInterviewer()) && isValidInterview(request.resource.data);
+      allow update: if isAdmin() || 
+                    (isInterviewer() && request.resource.data.interviewerId == request.auth.uid) ||
+                    (isAuthenticated() && resource.data.candidateId == request.auth.uid && 
+                     request.resource.data.candidateId == resource.data.candidateId &&
+                     // Candidate cannot set interviewerJoined to true
+                     (request.resource.data.interviewerJoined == resource.data.interviewerJoined || isInterviewer())
+                    );
+    }
+
+    match /interestRequests/{requestId} {
+      allow read: if isAuthenticated() && (resource.data.companyId == request.auth.uid || resource.data.candidateId == request.auth.uid);
+      allow create: if isCompany() && isValidInterestRequest(request.resource.data);
+      allow update: if (resource.data.candidateId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) && request.resource.data.status in ['accepted', 'declined']) || 
+                       (resource.data.candidateId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['candidateName'])) ||
+                       (resource.data.companyId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['companyName'])) ||
+                       isAdmin();
+    }
+
+    match /jobs/{jobId} {
+      allow read: if isAuthenticated();
+      allow create: if isCompany() && request.resource.data.companyId == request.auth.uid;
+      allow update, delete: if isCompany() && resource.data.companyId == request.auth.uid;
+    }
+
+    match /applications/{applicationId} {
+      allow read: if isAuthenticated() && (resource.data.candidateId == request.auth.uid || resource.data.companyId == request.auth.uid);
+      allow create: if isAuthenticated() && request.resource.data.candidateId == request.auth.uid;
+      allow update: if (isCompany() && resource.data.companyId == request.auth.uid) ||
+                       (resource.data.candidateId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['candidateName'])) ||
+                       (resource.data.companyId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['companyName']));
+    }
+
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
